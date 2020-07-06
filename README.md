@@ -38,7 +38,7 @@ RDP session hijacking is a post-exploitation technique for taking control of (fo
 
 ## Other Notable Implementations
 
-- [TScon](https://docs.microsoft.com/en-us/windows-server/administration/windows-commands/tscon) - Microsoft Terminal Services connection utility
+- [TScon](https://docs.microsoft.com/en-us/windows-server/administration/windows-commands/tscon) - Microsoft Terminal Services connection utility (tscon.exe)
 - [Mimikatz](https://github.com/gentilkiwi/mimikatz) - TS Module
 
 ## Ethics
