@@ -51,7 +51,7 @@ Sharp RDP Hijack is designed to help security professionals perform ethical and 
 - [Kevin Beaumont | RDP hijacking — how to hijack RDS and RemoteApp sessions transparently to move through an organisation](https://doublepulsar.com/rdp-hijacking-how-to-hijack-rds-and-remoteapp-sessions-transparently-to-move-through-an-da2a1e73a5f6)
 
 ## Credits
-- Benjamin Delpy - RDP Session Tradecraft](http://blog.gentilkiwi.com/securite/vol-de-session-rdp)
+- [Benjamin Delpy - RDP Session Tradecraft](http://blog.gentilkiwi.com/securite/vol-de-session-rdp)
 - [James Forshaw - COM Session Moniker EoP Exploit](https://www.exploit-db.com/exploits/41607)
 - [Enable-TSDuplicateToken](https://gallery.technet.microsoft.com/scriptcenter/Enable-TSDuplicateToken-6f485980)
 - [PInvoke](https://www.pinvoke.net/)
