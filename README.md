@@ -55,4 +55,4 @@ Sharp RDP Hijack is designed to help security professionals perform ethical and 
 - [Enable-TSDuplicateToken](https://gallery.technet.microsoft.com/scriptcenter/Enable-TSDuplicateToken-6f485980)
 - [PInvoke](https://www.pinvoke.net/)
 - [Nick Landers - StealToken Trick](https://twitter.com/monoxgas/status/1109892490566336512)
-
+- Benjamin Delpy - All Things Mimikatz](https://github.com/gentilkiwi/mimikatz)
