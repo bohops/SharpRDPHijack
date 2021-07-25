@@ -6,6 +6,7 @@ RDP session hijacking is a post-exploitation technique for taking control of (fo
 
 ## Notes
 - SharpRDPHijack.cs compiles in Visual Studio 2019 under .NET Framework v.4.
+- TS/ RDP Session query may require privileges depending on the target machine. 
 - Session hijacking requires an elevated (administrator) context to connect to another session.
 - NT AUTHORITY\SYSTEM context is required to take control of a session unless a target session user's password is known. Without a supplied password, SharpRDPHijack will (attempt to) impersonate NT AUTHORITY\SYSTEM.
 - Windows 2019 Server session hijacking exhibits interesting behavior vs prior OS versions. Upon hijacking a session that is redirected to an active RDP session, the Windows login screen prompts for the user's password/credential. If redirected to the console session, this redirection is successful and seamless. This presents an interesting research opportunity (IMO).
@@ -17,6 +18,7 @@ RDP session hijacking is a post-exploitation technique for taking control of (fo
 
 ```
 [*] Parameters:
+    --tsquery=<host> : Query a host to identify RDP/TS session information (not required for other switches)
     --session=<ID> : Target session identifier
     --password=<User's Password> : Session password if known (otherwise optional - not required for disconnect switch)
     --console : Redirect session to console session instead of current (active) session
@@ -33,10 +35,12 @@ RDP session hijacking is a post-exploitation technique for taking control of (fo
 
 [*] Example Usage 4: Disconnect active session #3
     SharpRDPHijack.exe --session=3 --disconnect
+
+[*] Example Usage 5: Query the local host for RDP/TS session information
+    SharpRDPHijack.exe --tsquery=localhost
 ```
 
 ## To Do
-- Implement RDP/WTS session query utility
 - Clean up session validation
 
 ## Other Notable Implementations
