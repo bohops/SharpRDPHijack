@@ -2,7 +2,7 @@
 Sharp RDP Hijack is a proof-of-concept .NET/C# Remote Desktop Protocol (RDP) session hijack utility for disconnected sessions
 
 ## Background
-RDP session hijacking is a post-exploitation technique for taking control of (forcefully) disconnected interactive login sessions. The technique is described in [Mitre ATT&CK T1563 - Remote Service Session Hijacking: RDP Hijacking](https://attack.mitre.org/beta/techniques/T1563/002/).
+RDP session hijacking is a post-exploitation technique for taking control of (forcefully) disconnected interactive login sessions. The technique is described in [Mitre ATT&CK T1563.002 - Remote Service Session Hijacking: RDP Hijacking](https://attack.mitre.org/techniques/T1563/002/).
 
 ## Notes
 - SharpRDPHijack.cs compiles in Visual Studio 2022 under .NET Framework v.4.8 (and likely earlier versions).
