@@ -28,7 +28,7 @@ RDP session hijacking is a post-exploitation technique for taking control of (fo
     --session=<ID> : Target session identifier
     --password=<User's Password> : Session password if known (otherwise optional - not required for disconnect switch)
     --console : Redirect session to console session instead of current (active) session
-    --shadow : Shadow an active session
+    --shadow : Shadow an active session (experimental)
     --disconnect : Disconnect an active (remote) session
 
 [*] Example Usage 1: Impersonate NT AUTHORITY\SYSTEM to hijack session #6 and redirect to the current session
