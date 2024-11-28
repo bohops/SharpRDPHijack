@@ -145,7 +145,7 @@ namespace SharpRDPHijack
             Console.WriteLine("    --session=<ID> : Target session identifier");
             Console.WriteLine("    --password=<User's Password> : Session password if known (otherwise optional - not required for disconnect switch)");
             Console.WriteLine("    --console : Redirect session to console session instead of current (active) session");
-            Console.WriteLine("    --shadow : Shadow an active session");
+            Console.WriteLine("    --shadow : Shadow an active session (experimental)");
             Console.WriteLine("    --disconnect : Disconnect an active (remote) session\n");
             Console.WriteLine("[*] Example Usage 1: Impersonate NT AUTHORITY\\SYSTEM to hijack session #6 and redirect to the current session");
             Console.WriteLine("    SharpRDPHijack.exe --session=6\n");
