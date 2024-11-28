@@ -159,7 +159,7 @@ namespace SharpRDPHijack
             Console.WriteLine("    SharpRDPHijack.exe --tsquery=localhost\n");
             Console.WriteLine("[*] Example Usage 6: Shadow active session #3");
             Console.WriteLine("    SharpRDPHijack.exe --session=3 --shadow\n");
-            Console.WriteLine("[*] Example Usage 6: Shadow inactive session #2 by redirecting the session to the console");
+            Console.WriteLine("[*] Example Usage 7: Shadow inactive session #2 by redirecting the session to the console");
             Console.WriteLine("    SharpRDPHijack.exe --session=2 --shadow --console\n");
         }
 
